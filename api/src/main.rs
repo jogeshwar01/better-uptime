@@ -3,18 +3,23 @@ use crate::types::{
     response::{CreateWebsiteOutput, GetWebsiteOutput},
 };
 use actix_web::{
-    get, http::StatusCode, post, web::{self}, App, HttpResponse, HttpServer, Responder
+    App, HttpResponse, HttpServer, Responder, get,
+    http::StatusCode,
+    post,
+    web::{self},
 };
+use store::store::Store;
+
 pub mod types;
 
 #[get("/website/{website_id}")]
 async fn get_website(path: web::Path<GetWebsiteInput>) -> impl Responder {
     let input = path.into_inner(); // Only call once
-    let response = GetWebsiteOutput {
-        website_id: input.website_id,
-    };
 
-    HttpResponse::Ok().json(response)
+    let mut s = Store::new().unwrap();
+    let website = s.get_website(input.website_id.to_string()).unwrap();
+
+    web::Json(GetWebsiteOutput { url: website.url })
 }
 
 #[post("/website")]
@@ -27,11 +32,12 @@ async fn create_website_fn(body: web::Json<CreateWebsiteInput>) -> impl Responde
             .body("URL cannot be empty - custom 422 Unprocessable Entity");
     }
 
-    let body = CreateWebsiteOutput {
-        id: String::from("website_id"),
-    };
+    let mut s = Store::new().unwrap();
+    let website = s
+        .create_website(input.user_id.to_string(), input.url)
+        .unwrap();
 
-    HttpResponse::Ok().json(body)
+    HttpResponse::Ok().json(CreateWebsiteOutput { id: website.id })
 }
 
 #[actix_web::main]
