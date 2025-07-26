@@ -10,3 +10,4 @@ serde_json = { version = "1.0.141", features = ["raw_value"] }
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 store = { path = "../store" }
 dotenvy = "0.15.7"
+env_logger = "0.11.8"

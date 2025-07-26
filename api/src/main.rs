@@ -2,10 +2,12 @@ use crate::types::{
     request::{CreateWebsiteInput, GetWebsiteInput},
     response::{CreateWebsiteOutput, GetWebsiteOutput},
 };
+use actix_web::middleware::Logger;
 use actix_web::{
     App, HttpResponse, HttpServer, Responder, get, post,
     web::{self},
 };
+use env_logger::Env;
 use std::sync::{Arc, Mutex};
 use store::store::Store;
 
@@ -54,9 +56,11 @@ async fn create_website_fn(
 async fn main() -> std::io::Result<()> {
     let store = Arc::new(Mutex::new(Store::new().unwrap()));
     let state = web::Data::new(AppState { store });
+    env_logger::init_from_env(Env::default().default_filter_or("debug"));
 
     HttpServer::new(move || {
         App::new()
+            .wrap(Logger::default())
             .app_data(state.clone())
             .service(get_website)
             .service(create_website_fn)
