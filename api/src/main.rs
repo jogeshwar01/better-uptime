@@ -3,47 +3,65 @@ use crate::types::{
     response::{CreateWebsiteOutput, GetWebsiteOutput},
 };
 use actix_web::{
-    App, HttpResponse, HttpServer, Responder, get,
-    http::StatusCode,
-    post,
+    App, HttpResponse, HttpServer, Responder, get, post,
     web::{self},
 };
+use std::sync::{Arc, Mutex};
 use store::store::Store;
 
 pub mod types;
+pub struct AppState {
+    pub store: Arc<Mutex<Store>>,
+}
 
 #[get("/website/{website_id}")]
-async fn get_website(path: web::Path<GetWebsiteInput>) -> impl Responder {
-    let input = path.into_inner(); // Only call once
+async fn get_website(
+    path: web::Path<GetWebsiteInput>,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    let input = path.into_inner();
+    let mut store = data.store.lock().unwrap();
 
-    let mut s = Store::new().unwrap();
-    let website = s.get_website(input.website_id.to_string()).unwrap();
-
-    web::Json(GetWebsiteOutput { url: website.url })
+    match store.get_website(input.website_id.to_string()) {
+        Ok(website) => HttpResponse::Ok().json(GetWebsiteOutput { url: website.url }),
+        Err(_) => HttpResponse::NotFound().body("Website not found"),
+    }
 }
 
 #[post("/website")]
-async fn create_website_fn(body: web::Json<CreateWebsiteInput>) -> impl Responder {
+async fn create_website_fn(
+    body: web::Json<CreateWebsiteInput>,
+    data: web::Data<AppState>,
+) -> impl Responder {
     let input = body.into_inner();
 
-    // Empty URL -> return custom 422 status
     if input.url.trim().is_empty() {
-        return HttpResponse::build(StatusCode::from_u16(422).unwrap())
-            .body("URL cannot be empty - custom 422 Unprocessable Entity");
+        return HttpResponse::UnprocessableEntity().body("URL cannot be empty");
     }
 
-    let mut s = Store::new().unwrap();
-    let website = s
-        .create_website(input.user_id.to_string(), input.url)
-        .unwrap();
+    let mut store = data.store.lock().unwrap();
 
-    HttpResponse::Ok().json(CreateWebsiteOutput { id: website.id })
+    match store.create_website(input.user_id.to_string(), input.url) {
+        Ok(website) => HttpResponse::Ok().json(CreateWebsiteOutput { id: website.id }),
+        Err(err) => {
+            println!("{}", err);
+            HttpResponse::InternalServerError().body("Could not create website")
+        }
+    }
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| App::new().service(get_website).service(create_website_fn))
-        .bind(("127.0.0.1", 8080))?
-        .run()
-        .await
+    let store = Arc::new(Mutex::new(Store::new().unwrap()));
+    let state = web::Data::new(AppState { store });
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(state.clone())
+            .service(get_website)
+            .service(create_website_fn)
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
 }
